@@ -8,6 +8,7 @@ use axum::{
 pub enum AppError {
     InvalidPayload(serde_json::Error),
     Anyhow(anyhow::Error),
+    ClientNotAvailable,
 }
 
 // Tell axum how to convert `AppError` into a response.
@@ -16,6 +17,10 @@ impl IntoResponse for AppError {
         let (status, error_message) = match self {
             AppError::Anyhow(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             AppError::InvalidPayload(e) => (StatusCode::BAD_REQUEST, e.to_string()),
+            AppError::ClientNotAvailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "External client is not configured or available".to_string(),
+            ),
         };
 
         (status, error_message).into_response()
