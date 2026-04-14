@@ -29,24 +29,24 @@ pub struct TokenPath {
 }
 
 async fn add_token(
-    State(state): State<Arc<AppState>>,
+    State(app_state): State<Arc<AppState>>,
     Json(payload): Json<TokenPayload>,
 ) -> Result<(StatusCode, &'static str), (StatusCode, String)> {
     if let Err(e) = payload.validate() {
         return Err((StatusCode::BAD_REQUEST, e.to_string()));
     }
-    state.auth_tokens.insert(payload.token, payload.permissions);
+    app_state.auth_tokens.insert(payload.token, payload.permissions);
     Ok((StatusCode::CREATED, "Token created"))
 }
 
 async fn delete_token(
-    State(state): State<Arc<AppState>>,
+    State(app_state): State<Arc<AppState>>,
     Path(token): Path<TokenPath>,
 ) -> Result<(StatusCode, &'static str), (StatusCode, String)> {
     if let Err(e) = token.validate() {
         return Err((StatusCode::BAD_REQUEST, e.to_string()));
     }
-    if state.auth_tokens.remove(&token.token).is_some() {
+    if app_state.auth_tokens.remove(&token.token).is_some() {
         Ok((StatusCode::OK, "Token deleted"))
     } else {
         Err((StatusCode::NOT_FOUND, "Token not found".to_string()))
@@ -54,7 +54,7 @@ async fn delete_token(
 }
 
 async fn update_token(
-    State(state): State<Arc<AppState>>,
+    State(app_state): State<Arc<AppState>>,
     Path(token): Path<TokenPath>,
     Json(payload): Json<PermissionsPayload>,
 ) -> Result<(StatusCode, &'static str), (StatusCode, String)> {
@@ -64,7 +64,7 @@ async fn update_token(
     if let Err(e) = payload.validate() {
         return Err((StatusCode::BAD_REQUEST, e.to_string()));
     }
-    if let Some(mut permissions) = state.auth_tokens.get_mut(&token.token) {
+    if let Some(mut permissions) = app_state.auth_tokens.get_mut(&token.token) {
         *permissions = payload.permissions;
         Ok((StatusCode::OK, "Token updated"))
     } else {
@@ -73,9 +73,9 @@ async fn update_token(
 }
 
 async fn list_tokens(
-    State(state): State<Arc<AppState>>,
+    State(app_state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<TokenPayload>>, (StatusCode, String)> {
-    let tokens = state
+    let tokens = app_state
         .auth_tokens
         .iter()
         .map(|entry| TokenPayload {
