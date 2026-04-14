@@ -57,14 +57,14 @@ where
 
     fn call(&mut self, req: Request<Body>) -> Self::Future {
         let required_permissions = self.required_permissions.clone();
-        let state = req.extensions().get::<Arc<AppState>>().cloned();
+        let app_state = req.extensions().get::<Arc<AppState>>().cloned();
         let auth_header = req.headers().typed_get::<Authorization<Bearer>>();
 
         let mut inner = self.inner.clone();
 
         Box::pin(async move {
-            let state = match state {
-                Some(state) => state,
+            let app_state = match app_state {
+                Some(app_state) => app_state,
                 None => {
                     return Ok(Response::builder()
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -84,7 +84,7 @@ where
                 }
             };
 
-            let is_authorized = match state.auth_tokens.get(&token) {
+            let is_authorized = match app_state.auth_tokens.get(&token) {
                 Some(user_permissions) => required_permissions
                     .iter()
                     .any(|p| user_permissions.contains(p)),
