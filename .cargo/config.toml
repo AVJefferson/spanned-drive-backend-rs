@@ -1,0 +1,17 @@
+[alias]
+dev = "run"
+stg = "run --profile stg --no-default-features --features stg"
+prd = "run --profile prd --no-default-features --features prd"
+
+
+build-dev = "build --profile dev"
+build-stg = "build --profile stg --no-default-features --features stg"
+build-prd = "build --profile prd --no-default-features --features prd"
+
+
+test-dev = "test"
+test-stg = "test --profile stg --no-default-features --features stg"
+test-prd = "test --profile prd --no-default-features --features prd"
+
+[target.x86_64-unknown-linux-musl]
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -1,0 +1,9 @@
+/target
+
+**/**.log
+**/**/*.env
+
+**/**/*.key
+**/**/*.crt
+
+allowed_clients

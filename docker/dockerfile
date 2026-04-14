@@ -1,0 +1,51 @@
+# --- STAGE 1: Build ---
+FROM rust:1.93-slim AS builder
+USER root
+
+RUN apt-get update && apt-get install -y musl-tools && rm -rf /var/lib/apt/lists/*
+RUN rustup target add x86_64-unknown-linux-musl
+
+WORKDIR /app
+
+# ARG PROFILE=prd
+ARG TARGET=x86_64-unknown-linux-musl
+
+# --- Precompile Cargo Crates ---
+RUN mkdir src && mkdir .cargo
+COPY Cargo.toml Cargo.lock ./
+COPY .cargo/config.toml .cargo/config.toml
+
+RUN echo "fn main() {}" > src/main.rs && \
+    cargo build-dev && \
+    cargo build-stg && \
+    cargo build-prd
+
+# #  This step is causing issues in the actual build step.
+# #  Unable to find a cause
+# RUN cargo build --target ${TARGET}
+
+# --- Copy New Code and Rebuild application ---
+ARG PROFILE=prd
+ARG APP_NAME=rust-app
+
+COPY src/ src
+
+ARG QUIETLY="false"
+RUN if [ "${QUIETLY}" = "false" ]; then QUIETLY=""; else QUIETLY="-q"; fi && \
+    cargo build-${PROFILE} ${QUIETLY} --target ${TARGET} && \
+    if [ "${PROFILE}" = "dev" ]; then DIR="debug"; else DIR="${PROFILE}"; fi && \
+    cp /app/target/${TARGET}/${DIR}/${APP_NAME} /app/final-binary && \
+    chmod +rx /app/final-binary
+
+# --- Runtime Stage (The Immutable Part) ---
+FROM gcr.io/distroless/static-debian12@sha256:20bc6c0bc4d625a22a8fde3e55f6515709b32055ef8fb9cfbddaa06d1760f838 AS runtime
+
+USER nonroot:nonroot
+
+WORKDIR /app
+
+COPY --from=builder --chown=nonroot:nonroot /app/final-binary ./rust-app
+COPY --chown=nonroot:nonroot allowed_clients /app/allowed_clients
+
+EXPOSE 3000
+ENTRYPOINT ["/app/rust-app"]

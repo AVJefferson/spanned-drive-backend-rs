@@ -1,0 +1,19 @@
+# --- Build Artifacts ---
+target/
+**/*.rs.bk
+
+# --- Environment and Logs ---
+**/**/*.env
+**/**/*.log
+.env
+
+# --- Docker & CI/CD ---
+docker/
+.git
+.gitignore
+.github/
+**/.DS_Store
+
+# --- Documentation ---
+README.md
+docs/

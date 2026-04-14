@@ -1,0 +1,113 @@
+name: sdrive-backend-rust
+
+volumes:
+  dev-log:
+  stg-log:
+  prd-log:
+
+networks:
+  stg:
+    driver: bridge
+  prd:
+    driver: bridge
+  dev:
+    driver: bridge
+  local:
+    driver: bridge
+
+services:
+  
+
+  sdrive-backend-rust-dev:
+    image: sdrive-backend-rust:dev
+    develop:
+        watch:
+          - action: rebuild
+            path: ../src
+          - action: rebuild
+            path: ../Cargo.toml
+    pull_policy: never
+    build:
+      context: ..
+      dockerfile: docker/dockerfile
+      args:
+        - PROFILE=dev
+        - APP_NAME=sdrive-backend-rust
+        - QUIETLY=false
+    container_name: sdrive-backend-rust-dev
+    profiles:
+      - builder
+      - dev
+    env_file:
+      - ../dev.env
+    ports:
+      - "3000:3000"
+    environment:
+      - APP_NAME=sdrive-backend-rust-dev
+      - RUST_LOG=info
+    networks:
+      - dev
+
+  
+
+  sdrive-backend-rust-stg:
+    image: sdrive-backend-rust:stg
+    develop:
+        watch:
+          - action: rebuild
+            path: ../src
+          - action: rebuild
+            path: ../Cargo.toml
+    pull_policy: never
+    build:
+      context: ..
+      dockerfile: docker/dockerfile
+      args:
+        - PROFILE=stg
+        - APP_NAME=sdrive-backend-rust
+        - QUIETLY=false
+    container_name: sdrive-backend-rust-stg
+    profiles:
+      - builder
+      - stg
+    env_file:
+      - ../stg.env
+    ports:
+      - "3001:3000"
+    environment:
+      - APP_NAME=sdrive-backend-rust-stg
+      - RUST_LOG=info
+    networks:
+      - stg
+
+  
+
+  sdrive-backend-rust-prd:
+    image: sdrive-backend-rust:prd
+    develop:
+        watch:
+          - action: rebuild
+            path: ../src
+          - action: rebuild
+            path: ../Cargo.toml
+    pull_policy: never
+    build:
+      context: ..
+      dockerfile: docker/dockerfile
+      args:
+        - PROFILE=prd
+        - APP_NAME=sdrive-backend-rust
+        - QUIETLY=false
+    container_name: sdrive-backend-rust-prd
+    profiles:
+      - builder
+      - prd
+    env_file:
+      - ../prd.env
+    ports:
+      - "3002:3000"
+    environment:
+      - APP_NAME=sdrive-backend-rust-prd
+      - RUST_LOG=info
+    networks:
+      - prd

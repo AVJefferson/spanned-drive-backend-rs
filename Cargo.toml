@@ -1,0 +1,113 @@
+[package]
+name = "sdrive-backend-rust"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = { version = "1.0.102", default-features = false }
+async-trait = "0.1.89"
+axum = "0.8.9"
+axum-extra = { version = "0.12.6", features = ["typed-header"] }
+chrono = "0.4.44"
+dashmap = "6.1.0"
+futures-util = "0.3.32"
+log = "0.4.29"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+tokio = { version = "1.51.1", features = ["full"] }
+tokio-cron-scheduler = "0.15.1"
+tower = "0.5.3"
+tracing = "0.1.44"
+tracing-log = "0.2.0"
+tracing-subscriber = { version = "0.3.23", features = ["fmt", "json", "env-filter"] }
+validator = { version = "0.20.0", features = ["derive"] }
+
+[dev-dependencies]
+axum-test = "19.1.1"
+cargo-audit = "0.22.1"
+
+
+
+
+# --- PRODUCTION PROFILE ---
+[profile.prd]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+debug = false
+overflow-checks = false
+incremental = false
+
+
+# --- RELEASE PROFILE OVERRIDE ---
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+debug = false
+overflow-checks = false
+incremental = false
+
+
+# --- STAGING PROFILE ---
+[profile.stg]
+inherits = "dev"
+opt-level = 0
+debug = true
+overflow-checks = true
+lto = false
+incremental = true
+panic = "unwind"
+codegen-units = 256
+
+
+# --- FEATURE FLAGS ---
+[features]
+default = ["localhost"]
+
+prd = [
+    "enable_logging_to_file",
+    "enable_log_level_info",
+    "enable_log_level_transaction",
+    "enable_log_level_warn",
+    "enable_log_level_error",
+    "enable_log_level_critical",
+    "enable_log_tracing",
+]
+stg = [
+    "enable_logging_to_file",
+    "enable_logging_to_console",
+    "enable_log_level_all",
+    "enable_log_tracing",
+]
+localhost = [
+    "enable_logging_to_console",
+    "enable_log_level_all",
+    "enable_log_tracing",
+]
+
+enable_logging = []
+
+enable_logging_to_console = ["enable_logging"]
+enable_logging_to_file = ["enable_logging"]
+
+enable_log_level_verbose = ["enable_logging"]
+enable_log_level_transaction = ["enable_logging"]
+enable_log_level_info = ["enable_logging"]
+enable_log_level_warn = ["enable_logging"]
+enable_log_level_error = ["enable_logging"]
+enable_log_level_critical = ["enable_logging"]
+enable_log_level_all = [
+    "enable_log_level_verbose",
+    "enable_log_level_transaction",
+    "enable_log_level_info",
+    "enable_log_level_warn",
+    "enable_log_level_error",
+    "enable_log_level_critical",
+]
+enable_log_tracing = ["enable_logging"]
