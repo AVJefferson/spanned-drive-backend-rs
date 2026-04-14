@@ -36,6 +36,8 @@ pub fn routes(app_state: Arc<AppState>) -> Router {
         }
     };
 
+    println!("CORS: {:?}", cors);
+
     Router::new()
         // .nest(
         //     "/admin",
