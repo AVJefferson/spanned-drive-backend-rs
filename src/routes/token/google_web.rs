@@ -1,12 +1,14 @@
-mod google_web;
-
 use crate::state::AppState;
 
-use axum::Router;
+use axum::{Router, routing::post};
 use std::sync::Arc;
+
+async fn request_handler() -> () {
+    ()
+}
 
 pub fn routes(app_state: Arc<AppState>) -> Router {
     Router::new()
-        .nest("/google-web", google_web::routes(app_state.clone()))
+        .route("/", post(request_handler))
         .with_state(app_state)
 }
