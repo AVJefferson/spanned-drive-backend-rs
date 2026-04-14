@@ -66,7 +66,8 @@ pub async fn start_server() {
 
     let port =
         env::var("SERVER_PORT").unwrap_or_else(|_| constants::DEFAULT_SERVER_PORT.to_string());
-    let addr = format!("0.0.0.0:{}", port);
+    let host = env::var("SERVER_HOST").unwrap_or_else(|_| constants::DEFAULT_SERVER_HOST.to_string());
+    let addr = format!("{}:{}", host, port);
 
     log::info!(
         "Starting server... at http://{}. TraceID: {}",
