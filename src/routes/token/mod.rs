@@ -6,5 +6,5 @@ use axum::Router;
 use std::sync::Arc;
 
 pub fn routes(app_state: Arc<AppState>) -> Router {
-    Router::new().nest("/google-web", google_web::routes(app_state.clone()))
+    Router::new().nest("/google-drive", google_web::routes(app_state.clone()))
 }
