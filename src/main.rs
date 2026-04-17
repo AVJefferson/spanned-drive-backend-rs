@@ -1,3 +1,4 @@
+mod allowed_clients;
 mod clients;
 mod compile_time_checks;
 mod constants;
