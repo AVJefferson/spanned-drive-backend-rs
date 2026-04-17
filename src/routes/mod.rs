@@ -10,16 +10,8 @@ use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 
 pub fn routes(app_state: Arc<AppState>) -> Router {
-    let environment = std::env::var("ENVIRONMENT").unwrap_or_else(|_| "local".to_string());
-
-    let cors = if environment == "dev" || environment == "local" {
-        CorsLayer::new()
-            .allow_origin(vec!["http://localhost:1420".parse::<axum::http::HeaderValue>().unwrap()])
-            .allow_methods(Any)
-            .allow_headers(Any)
-    } else {
-        let cors_env = std::env::var("CORS").unwrap_or_else(|_| "".to_string());
-        if cors_env.is_empty() {
+    let cors = if let Ok(cors_env) = std::env::var("CORS") {
+        if cors_env == "*" {
             CorsLayer::new()
                 .allow_origin(Any)
                 .allow_methods(Any)
@@ -34,6 +26,12 @@ pub fn routes(app_state: Arc<AppState>) -> Router {
                 .allow_methods(Any)
                 .allow_headers(Any)
         }
+    } else {
+        // If CORS variable is not set, no CORS allowed (disable all)
+        CorsLayer::new()
+            .allow_origin(Vec::<axum::http::HeaderValue>::new())
+            .allow_methods(Vec::<axum::http::Method>::new())
+            .allow_headers(Vec::<axum::http::HeaderName>::new())
     };
 
     println!("CORS: {:?}", cors);
