@@ -12,12 +12,6 @@ pub async fn start_server() {
     let clients = Clients::new_from_env_variables().await;
     let auth_tokens = DashMap::new();
 
-    let environment = env::var("ENVIRONMENT").unwrap_or_else(|_| "local".to_string());
-    if environment == "local" || environment == "dev" {
-        auth_tokens.insert("test".to_string(), vec!["token".to_string()]);
-        auth_tokens.insert("admin".to_string(), vec!["admin".to_string()]);
-    }
-
     if let Err(e) = allowed_clients::load_into_map(&auth_tokens).await {
         log::error!("allowed_clients: failed to load directory: {}", e);
     }

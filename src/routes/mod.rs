@@ -12,12 +12,11 @@ use axum::{middleware::from_fn_with_state, Router};
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
-fn cors_layer_for_non_local(environment: &str) -> CorsLayer {
+fn cors_layer_for_non_local() -> CorsLayer {
     let cors_env = std::env::var("CORS").unwrap_or_else(|_| "".to_string());
     if cors_env.is_empty() {
         log::info!(
-            "CORS: ENVIRONMENT={} with empty CORS — no origins allowed",
-            environment
+            "CORS: Empty CORS — no origins allowed"
         );
         return CorsLayer::new()
             .allow_origin(AllowOrigin::predicate(|_: &axum::http::HeaderValue, _| false))
@@ -26,7 +25,7 @@ fn cors_layer_for_non_local(environment: &str) -> CorsLayer {
     }
 
     if cors_env.trim() == "*" {
-        log::info!("CORS: ENVIRONMENT={} — allowing any origin (*)", environment);
+        log::info!("CORS: Allowing any origin (*)");
         return CorsLayer::new()
             .allow_origin(Any)
             .allow_methods(Any)
@@ -53,8 +52,7 @@ fn cors_layer_for_non_local(environment: &str) -> CorsLayer {
 
     if origins.is_empty() {
         log::info!(
-            "CORS: ENVIRONMENT={} — no valid origins after parsing; no origins allowed",
-            environment
+            "CORS: No valid origins after parsing; no origins allowed",
         );
         CorsLayer::new()
             .allow_origin(AllowOrigin::predicate(|_: &axum::http::HeaderValue, _| false))
@@ -70,16 +68,8 @@ fn cors_layer_for_non_local(environment: &str) -> CorsLayer {
 }
 
 pub fn routes(app_state: Arc<AppState>) -> Router {
-    let environment = std::env::var("ENVIRONMENT").unwrap_or_else(|_| "local".to_string());
-
-    let cors = if environment == "dev" || environment == "local" {
-        CorsLayer::new()
-            .allow_origin(vec!["http://localhost:1420".parse::<axum::http::HeaderValue>().unwrap()])
-            .allow_methods(Any)
-            .allow_headers(Any)
-    } else {
-        cors_layer_for_non_local(&environment)
-    };
+    let cors = cors_layer_for_non_local();
+    
 
     let token_state = TokenRouterState {
         app_state: app_state.clone(),
