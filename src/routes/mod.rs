@@ -3,9 +3,12 @@ mod app_info;
 mod health;
 mod token;
 
-use crate::{middlewares::authz::AuthzLayer, state::AppState};
+use crate::{
+    middlewares::authz::{authz_middleware, TokenRouterState},
+    state::AppState,
+};
 
-use axum::{Extension, Router};
+use axum::{middleware::from_fn_with_state, Router};
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
@@ -78,7 +81,10 @@ pub fn routes(app_state: Arc<AppState>) -> Router {
         cors_layer_for_non_local(&environment)
     };
 
-    log::info!("CORS layer configured for ENVIRONMENT={}", environment);
+    let token_state = TokenRouterState {
+        app_state: app_state.clone(),
+        required_permissions: Arc::from(["token".to_string()]),
+    };
 
     Router::new()
         // .nest(
@@ -87,10 +93,12 @@ pub fn routes(app_state: Arc<AppState>) -> Router {
         // )
         .nest(
             "/token",
-            token::routes(app_state.clone()).layer(AuthzLayer::new(vec!["token".to_string()])),
+            token::routes(token_state.clone()).layer(from_fn_with_state(
+                token_state.clone(),
+                authz_middleware,
+            )),
         )
         .nest("/health", health::routes(app_state.clone()))
         .nest("/status", app_info::routes(app_state.clone()))
-        .layer(Extension(app_state))
         .layer(cors)
 }

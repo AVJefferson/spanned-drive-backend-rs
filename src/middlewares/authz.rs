@@ -1,121 +1,75 @@
 use crate::state::AppState;
 use axum::{
     body::Body,
+    extract::{FromRef, State},
     http::{Request, StatusCode},
+    middleware::Next,
     response::Response,
 };
 use axum_extra::headers::{Authorization, HeaderMapExt, authorization::Bearer};
-use futures_util::future::BoxFuture;
-use std::{
-    sync::Arc,
-    task::{Context, Poll},
-};
-use tower::{Layer, Service};
+use std::sync::Arc;
 
 #[derive(Clone)]
-pub struct AuthzLayer {
-    required_permissions: Arc<[String]>,
+pub struct TokenRouterState {
+    pub app_state: Arc<AppState>,
+    pub required_permissions: Arc<[String]>,
 }
 
-impl AuthzLayer {
-    pub fn new(required_permissions: Vec<String>) -> Self {
-        Self {
-            required_permissions: Arc::from(required_permissions),
+impl FromRef<TokenRouterState> for Arc<AppState> {
+    fn from_ref(state: &TokenRouterState) -> Self {
+        state.app_state.clone()
+    }
+}
+
+pub async fn authz_middleware(
+    State(state): State<TokenRouterState>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    let auth_header = request.headers().typed_get::<Authorization<Bearer>>();
+
+    let token = match auth_header {
+        Some(Authorization(bearer)) => bearer.token().to_string(),
+        None => {
+            log::trace!("Missing authorization header");
+            return Response::builder()
+                .status(StatusCode::UNAUTHORIZED)
+                .body(Body::from("Missing authorization header"))
+                .unwrap();
         }
-    }
-}
+    };
 
-impl<S> Layer<S> for AuthzLayer {
-    type Service = AuthzMiddleware<S>;
-
-    fn layer(&self, inner: S) -> Self::Service {
-        AuthzMiddleware {
-            inner,
-            required_permissions: self.required_permissions.clone(),
+    let is_authorized = match state.app_state.auth_tokens.get(&token) {
+        Some(user_permissions) => state
+            .required_permissions
+            .iter()
+            .any(|p| user_permissions.contains(p)),
+        None => {
+            return Response::builder()
+                .status(StatusCode::UNAUTHORIZED)
+                .body(Body::from("Invalid token"))
+                .unwrap();
         }
-    }
-}
+    };
 
-#[derive(Clone)]
-pub struct AuthzMiddleware<S> {
-    inner: S,
-    required_permissions: Arc<[String]>,
-}
-
-impl<S> Service<Request<Body>> for AuthzMiddleware<S>
-where
-    S: Service<Request<Body>, Response = Response> + Clone + Send + 'static,
-    S::Future: Send + 'static,
-{
-    type Response = Response;
-    type Error = S::Error;
-    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
-    }
-
-    fn call(&mut self, req: Request<Body>) -> Self::Future {
-        let required_permissions = self.required_permissions.clone();
-        let app_state = req.extensions().get::<Arc<AppState>>().cloned();
-        let auth_header = req.headers().typed_get::<Authorization<Bearer>>();
-
-        let mut inner = self.inner.clone();
-
-        Box::pin(async move {
-            let app_state = match app_state {
-                Some(app_state) => app_state,
-                None => {
-                    return Ok(Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(Body::from("AppState not found"))
-                        .unwrap());
-                }
-            };
-
-            let token = match auth_header {
-                Some(Authorization(bearer)) => bearer.token().to_string(),
-                None => {
-                    log::trace!("Missing authorization header");
-                    return Ok(Response::builder()
-                        .status(StatusCode::UNAUTHORIZED)
-                        .body(Body::from("Missing authorization header"))
-                        .unwrap());
-                }
-            };
-
-            let is_authorized = match app_state.auth_tokens.get(&token) {
-                Some(user_permissions) => required_permissions
-                    .iter()
-                    .any(|p| user_permissions.contains(p)),
-                None => {
-                    return Ok(Response::builder()
-                        .status(StatusCode::UNAUTHORIZED)
-                        .body(Body::from("Invalid token"))
-                        .unwrap());
-                }
-            };
-
-            if is_authorized {
-                inner.call(req).await
-            } else {
-                log::trace!("Insufficient permissions");
-                Ok(Response::builder()
-                    .status(StatusCode::FORBIDDEN)
-                    .body(Body::from("Insufficient permissions"))
-                    .unwrap())
-            }
-        })
+    if is_authorized {
+        next.run(request).await
+    } else {
+        log::trace!("Insufficient permissions");
+        Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body(Body::from("Insufficient permissions"))
+            .unwrap()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use axum::{Extension, Router, routing::get};
+    use axum::{middleware::from_fn_with_state, routing::get, Router};
     use axum_test::TestServer;
     use dashmap::DashMap;
 
-    use crate::{clients::Clients, middlewares::authz::AuthzLayer};
+    use crate::{clients::Clients, middlewares::authz::TokenRouterState};
     use crate::test_utils::timeout;
 
     use super::*;
@@ -133,10 +87,15 @@ mod tests {
                 auth_tokens: auth_tokens,
             });
 
+            let token_state = TokenRouterState {
+                app_state: app_state.clone(),
+                required_permissions: Arc::from(["admin".to_string()]),
+            };
+
             let app = Router::new()
                 .route("/", get(|| async { (StatusCode::OK, "OK") }))
-                .layer(AuthzLayer::new(vec!["admin".to_string()]))
-                .layer(Extension(app_state.clone()));
+                .with_state(token_state.clone())
+                .layer(from_fn_with_state(token_state.clone(), authz_middleware));
             let server = TestServer::new(app);
 
             app_state

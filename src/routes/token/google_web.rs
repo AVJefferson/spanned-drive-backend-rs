@@ -1,4 +1,4 @@
-use crate::{error::AppError, state::AppState};
+use crate::{error::AppError, middlewares::authz::TokenRouterState, state::AppState};
 
 use axum::{Router, extract::State, response::Json, routing::post};
 use serde::{Deserialize, Serialize};
@@ -50,9 +50,9 @@ async fn request_handler_access_token(
     Ok(Json(token_response))
 }
 
-pub fn routes(app_state: Arc<AppState>) -> Router {
+pub fn routes(state: TokenRouterState) -> Router {
     Router::new()
         .route("/refresh_token", post(request_handler_refresh_token))
         .route("/access_token", post(request_handler_access_token))
-        .with_state(app_state)
+        .with_state(state)
 }
