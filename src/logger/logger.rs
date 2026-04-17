@@ -11,15 +11,12 @@ impl Logger {
         let config = LoggerConfig::from_env();
 
         if config.enable_log_tracing {
-            LogTracer::init().expect("Failed to set logger");
+            let _ = LogTracer::init();
         }
 
-        let subscriber = tracing_subscriber::fmt::Subscriber::builder()
+        let _ = tracing_subscriber::fmt()
             .with_max_level(config.log_level)
-            .finish();
-
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("Failed to set global default subscriber");
+            .try_init();
 
         Ok(Self {})
     }
