@@ -2,12 +2,32 @@
 
 use dashmap::DashMap;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 pub struct ClientKeyFile {
     pub token: String,
     pub permissions: Vec<String>,
+}
+
+struct LoadedEntry {
+    path: PathBuf,
+    key_name: String,
+    token: String,
+    permissions: Vec<String>,
+}
+
+fn token_display(token: &str) -> String {
+    if token.len() > 10 {
+        format!(
+            "{}...{}",
+            &token[..5],
+            &token[token.len() - 5..]
+        )
+    } else {
+        token.to_string()
+    }
 }
 
 #[cfg(unix)]
@@ -33,6 +53,8 @@ pub async fn load_into_map(auth_tokens: &DashMap<String, Vec<String>>) -> std::i
         }
         Err(e) => return Err(e),
     };
+
+    let mut loaded: Vec<LoadedEntry> = Vec::new();
 
     while let Some(entry) = read_dir.next_entry().await? {
         let path: PathBuf = entry.path();
@@ -94,23 +116,12 @@ pub async fn load_into_map(auth_tokens: &DashMap<String, Vec<String>>) -> std::i
                 continue;
             }
 
-            auth_tokens.insert(parsed.token.clone(), parsed.permissions.clone());
-
-            let display_key = if parsed.token.len() > 10 {
-                format!(
-                    "{}...{}",
-                    &parsed.token[..5],
-                    &parsed.token[parsed.token.len() - 5..]
-                )
-            } else {
-                parsed.token.clone()
-            };
-            log::info!(
-                "allowed_clients: loaded key name {:?} → token {} with permissions {:?}",
+            loaded.push(LoadedEntry {
+                path,
                 key_name,
-                display_key,
-                parsed.permissions
-            );
+                token: parsed.token,
+                permissions: parsed.permissions,
+            });
         } else if extension == "blocked" || extension == "deleted" || extension == "disabled" {
             let key = path.file_name().unwrap().to_string_lossy().into_owned();
             let display_key = if key.len() > 10 {
@@ -120,6 +131,38 @@ pub async fn load_into_map(auth_tokens: &DashMap<String, Vec<String>>) -> std::i
             };
             log::warn!("key: {} is {}", display_key, extension.to_string_lossy());
         }
+    }
+
+    let mut by_token: HashMap<String, Vec<LoadedEntry>> = HashMap::new();
+    for entry in loaded {
+        by_token.entry(entry.token.clone()).or_default().push(entry);
+    }
+
+    for (token, mut entries) in by_token {
+        if entries.len() > 1 {
+            entries.sort_by(|a, b| a.path.cmp(&b.path));
+            let paths: Vec<String> = entries
+                .iter()
+                .map(|e| e.path.display().to_string())
+                .collect();
+            log::error!(
+                "allowed_clients: duplicate token {} in {} key files — not loading any of them: {}",
+                token_display(&token),
+                entries.len(),
+                paths.join(", ")
+            );
+            continue;
+        }
+
+        let entry = entries.pop().expect("len == 1");
+        auth_tokens.insert(entry.token.clone(), entry.permissions.clone());
+
+        log::info!(
+            "allowed_clients: loaded key name {:?} → token {} with permissions {:?}",
+            entry.key_name,
+            token_display(&entry.token),
+            entry.permissions
+        );
     }
 
     Ok(())
