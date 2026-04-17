@@ -7,34 +7,78 @@ use crate::{middlewares::authz::AuthzLayer, state::AppState};
 
 use axum::{Extension, Router};
 use std::sync::Arc;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+
+fn cors_layer_for_non_local(environment: &str) -> CorsLayer {
+    let cors_env = std::env::var("CORS").unwrap_or_else(|_| "".to_string());
+    if cors_env.is_empty() {
+        log::info!(
+            "CORS: ENVIRONMENT={} with empty CORS — no origins allowed",
+            environment
+        );
+        return CorsLayer::new()
+            .allow_origin(AllowOrigin::predicate(|_: &axum::http::HeaderValue, _| false))
+            .allow_methods(Any)
+            .allow_headers(Any);
+    }
+
+    if cors_env.trim() == "*" {
+        log::info!("CORS: ENVIRONMENT={} — allowing any origin (*)", environment);
+        return CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any);
+    }
+
+    let mut origins = Vec::new();
+    for fragment in cors_env.split(',') {
+        let fragment = fragment.trim();
+        if fragment.is_empty() {
+            continue;
+        }
+        match fragment.parse::<axum::http::HeaderValue>() {
+            Ok(h) => origins.push(h),
+            Err(e) => {
+                log::warn!(
+                    "CORS: skipping invalid origin {:?}: {}",
+                    fragment,
+                    e
+                );
+            }
+        }
+    }
+
+    if origins.is_empty() {
+        log::info!(
+            "CORS: ENVIRONMENT={} — no valid origins after parsing; no origins allowed",
+            environment
+        );
+        CorsLayer::new()
+            .allow_origin(AllowOrigin::predicate(|_: &axum::http::HeaderValue, _| false))
+            .allow_methods(Any)
+            .allow_headers(Any)
+    } else {
+        log::info!("CORS: allowing {} explicit origin(s)", origins.len());
+        CorsLayer::new()
+            .allow_origin(origins)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    }
+}
 
 pub fn routes(app_state: Arc<AppState>) -> Router {
-    let cors = if let Ok(cors_env) = std::env::var("CORS") {
-        if cors_env == "*" {
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any)
-        } else {
-            let origins: Vec<axum::http::HeaderValue> = cors_env
-                .split(',')
-                .map(|s| s.trim().parse::<axum::http::HeaderValue>().expect("Invalid CORS header value"))
-                .collect();
-            CorsLayer::new()
-                .allow_origin(origins)
-                .allow_methods(Any)
-                .allow_headers(Any)
-        }
-    } else {
-        // If CORS variable is not set, no CORS allowed (disable all)
+    let environment = std::env::var("ENVIRONMENT").unwrap_or_else(|_| "local".to_string());
+
+    let cors = if environment == "dev" || environment == "local" {
         CorsLayer::new()
-            .allow_origin(Vec::<axum::http::HeaderValue>::new())
-            .allow_methods(Vec::<axum::http::Method>::new())
-            .allow_headers(Vec::<axum::http::HeaderName>::new())
+            .allow_origin(vec!["http://localhost:1420".parse::<axum::http::HeaderValue>().unwrap()])
+            .allow_methods(Any)
+            .allow_headers(Any)
+    } else {
+        cors_layer_for_non_local(&environment)
     };
 
-    println!("CORS: {:?}", cors);
+    log::info!("CORS layer configured for ENVIRONMENT={}", environment);
 
     Router::new()
         // .nest(
