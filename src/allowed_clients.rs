@@ -52,8 +52,8 @@ pub async fn load_into_map(auth_tokens: &DashMap<String, Vec<String>>) -> std::i
                 let mode = meta.permissions().mode();
                 if !is_secure_key_mode(mode) {
                     log::error!(
-                        "allowed_clients: {:?} has insecure mode {:o}; require 0o600 or 0o400 — skipping",
-                        path.file_name(),
+                        "allowed_clients: {:?} has insecure mode {:o}; require 600 or 400 — skipping",
+                        path.file_name().unwrap().to_string_lossy(),
                         mode & 0o7777
                     );
                     continue;
