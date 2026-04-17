@@ -64,3 +64,45 @@ clear && docker build-prd
 # dev
 clear && set -a && source local.env && set +a && cargo test-dev
 ```
+
+## PreRequisites
+
+### Install Docker 
+[Install from Docker Official Website](https://docs.docker.com/desktop/setup/install/linux/)
+
+### Install Rust
+[Install from Rust Official Website](https://www.rust-lang.org/tools/install)
+
+### Create allowed_clients directory and create a new key file
+```bash
+mkdir -p allowed_clients && touch allowed_clients/test.key
+echo '{"token": "test", "permissions": ["test"]}' > allowed_clients/test.key
+```
+
+### Create Environment Variables File {local, dev, stg, prd}.env
+```bash
+ENVIRONMENT=local
+SERVER_PORT=3000
+SERVER_HOST=0.0.0.0
+
+ENABLE_EXTERNAL_SYSTEM_GOOGLE=true
+GOOGLE_CLIENT_ID="<your-google-client-id>.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET=<your-google-client-secret>
+```
+
+
+## Other Helpful Commands
+
+### Cargo Audit
+```bash
+cargo install cargo-audit
+clear && cargo audit
+clear && cargo audit fix
+```
+
+### Cargo crates Features
+
+```bash
+cargo install cargo-features
+clear && cargo features
+```
