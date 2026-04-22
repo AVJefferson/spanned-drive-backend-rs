@@ -1,4 +1,6 @@
-use crate::{error::AppError, state::AppState};
+use crate::{
+    error::AppError, external_systems::google::config::AccessTokenPayload, state::AppState,
+};
 
 use axum::{Router, extract::State, response::Json, routing::post};
 use serde::{Deserialize, Serialize};
@@ -15,11 +17,6 @@ struct ProfilePayload {
     pub picture: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct AccessTokenPayload {
-    pub access_token: String,
-}
-
 async fn request_handler_user_info(
     State(app_state): State<Arc<AppState>>,
     Json(payload): Json<AccessTokenPayload>,
@@ -33,18 +30,11 @@ async fn request_handler_user_info(
     let response = google_client
         .fetch_user_info(payload.access_token)
         .await
-        .map_err(|_| AppError::ExternalServiceError(format!("Google")))?;
+        .map_err(|_| AppError::ExternalServiceError(format!("Google Call Failed")))?;
 
-    print!("Google user info response: {:?}", response);
-
-    if let Some(error) = response.get("error") {
-        let error_description = response
-            .get("error_description")
-            .and_then(|desc| desc.as_str())
-            .unwrap_or("Unknown error");
+    if let Some(_) = response.get("error") {
         return Err(AppError::ExternalServiceError(format!(
-            "Error: {} - {}",
-            error, error_description
+            "Google Call Failed"
         )));
     }
 

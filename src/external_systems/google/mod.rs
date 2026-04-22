@@ -70,4 +70,215 @@ impl GoogleClient {
         let json = response.json::<serde_json::Value>().await?;
         Ok(json)
     }
+
+    pub async fn fetch_drive_info(
+        &self,
+        access_token: String,
+    ) -> anyhow::Result<serde_json::Value> {
+        let client = reqwest::Client::new();
+        let response: reqwest::Response = client
+            .get("https://www.googleapis.com/drive/v3/about?fields=storageQuota")
+            .bearer_auth(access_token)
+            .send()
+            .await?;
+
+        let json = response.json::<serde_json::Value>().await?;
+        Ok(json)
+    }
+
+    pub async fn list_appdata_files(
+        &self,
+        access_token: String,
+        query: String,
+    ) -> anyhow::Result<serde_json::Value> {
+        let client = reqwest::Client::new();
+        let response: reqwest::Response = client
+            .get(format!(
+                "https://www.googleapis.com/drive/v3/files?q={query}&spaces=appDataFolder"
+            ))
+            .bearer_auth(access_token)
+            .send()
+            .await?;
+
+        let json = response.json::<serde_json::Value>().await?;
+
+        let json = json
+            .get("files")
+            .cloned()
+            .unwrap_or(serde_json::Value::Array(vec![]));
+        Ok(json)
+    }
+
+    pub async fn get_primary_file_id(&self, access_token: String) -> anyhow::Result<String> {
+        let client = reqwest::Client::new();
+        let response: reqwest::Response = client
+            .get("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='is_primary.json'")
+            .bearer_auth(access_token)
+            .send()
+            .await?;
+
+        let json = response.json::<serde_json::Value>().await?;
+        if let Some(files) = json.get("files").and_then(|f| f.as_array()) {
+            if !files.is_empty() {
+                let file_id = files[0].get("id").and_then(|id| id.as_str()).unwrap_or("");
+
+                return Ok(file_id.to_string());
+            }
+        }
+
+        Ok("".to_string())
+    }
+
+    pub async fn set_is_primary(&self, access_token: String) -> anyhow::Result<()> {
+        let client = reqwest::Client::new();
+
+        let response = client
+            .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
+            .bearer_auth(access_token)
+            .header("Content-Type", "multipart/related; boundary=foo_bar_baz")
+            .body(
+                "--foo_bar_baz\r\n\
+                 Content-Type: application/json; charset=UTF-8\r\n\r\n\
+                 {\"name\": \"is_primary.json\", \"parents\": [\"appDataFolder\"]}
+                 --foo_bar_baz\r\n\
+                 Content-Type: application/json\r\n\r\n\
+                 {\"is_primary\": true}\r\n\
+                 --foo_bar_baz--",
+            )
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!(
+                "Failed to set is_primary: {}",
+                response.text().await?
+            ))
+        }
+    }
+
+    pub async fn get_secondary_drives(&self, access_token: String) -> anyhow::Result<Vec<String>> {
+        let client = reqwest::Client::new();
+
+        let user = self.fetch_user_info(access_token.clone()).await?;
+        let primary_email = user.get("email").and_then(|e| e.as_str()).unwrap_or("");
+        if primary_email == "" {
+            return Ok(vec![]);
+        }
+        let primary_email = primary_email.replace("@", "__at__").replace(".", "__dot__");
+
+        let response: reqwest::Response = client
+            .get(format!("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name contains 'sdrive---secondary-drive---{}---'", primary_email.clone()))
+            // .get("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name contains 'sdrive_secondary_drive_primary'")
+            .bearer_auth(access_token)
+            .send()
+            .await?;
+
+        let json = response.json::<serde_json::Value>().await?;
+        let mut secondary_drives = Vec::new();
+
+        if let Some(files) = json.get("files").and_then(|f| f.as_array()) {
+            for file in files {
+                if let Some(name) = file.get("name").and_then(|n| n.as_str()) {
+                    secondary_drives.push(
+                        name.to_string()
+                            .replace("sdrive---secondary-drive---", "")
+                            .replace(&primary_email, "")
+                            .replace("---", "||")
+                            .replace("__at__", "@")
+                            .replace("__dot__", ".")
+                            .replace(".json", ""),
+                    );
+                }
+            }
+        }
+
+        Ok(secondary_drives)
+    }
+
+    pub async fn set_secondary_drive(
+        &self,
+        access_token: String,
+        drive_provider: String,
+        new_secondary_drive_email: String,
+    ) -> anyhow::Result<()> {
+        let client = reqwest::Client::new();
+
+        let user = self.fetch_user_info(access_token.clone()).await?;
+        let primary_email = user.get("email").and_then(|e| e.as_str()).unwrap_or("");
+        if primary_email == "" {
+            return Err(anyhow::anyhow!("Failed to fetch user info"));
+        }
+        let primary_email = primary_email.replace("@", "__at__").replace(".", "__dot__");
+
+        let existing: serde_json::Value = Self::list_appdata_files(
+            self,
+            access_token.clone(),
+            format!(
+                "name contains 'sdrive---secondary-drive---{}---'",
+                primary_email.clone()
+            ),
+        )
+        .await?;
+
+        let file_name = format!(
+            "sdrive---secondary-drive---{}---{}---{}.json",
+            primary_email,
+            drive_provider,
+            new_secondary_drive_email
+                .replace("@", "__at__")
+                .replace(".", "__dot__")
+        );
+
+        if existing
+            .get("files")
+            .and_then(|f| f.as_array())
+            .unwrap_or(&vec![])
+            .iter()
+            .any(|file| file.get("name").and_then(|n| n.as_str()) == Some(&file_name))
+        {
+            return Ok(());
+        }
+
+        let metadata = serde_json::json!({
+            "name": file_name,
+            "parents": ["appDataFolder"],
+        })
+        .to_string();
+
+        let content = serde_json::json!({
+            "logical_drives": [],
+        })
+        .to_string();
+
+        let body = format!(
+            "--foo_bar_baz\r\n\
+             Content-Type: application/json; charset=UTF-8\r\n\
+             \r\n\
+             {metadata}\r\n\
+             --foo_bar_baz\r\n\
+             Content-Type: application/json\r\n\
+             \r\n\
+             {content}\r\n\
+             --foo_bar_baz--"
+        );
+
+        let response = client
+            .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
+            .bearer_auth(access_token)
+            .header("Content-Type", "multipart/related; boundary=foo_bar_baz")
+            .body(body)
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!(
+                "Failed to create secondary drive: {}",
+                response.text().await?
+            ))
+        }
+    }
 }

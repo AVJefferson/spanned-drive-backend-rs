@@ -22,7 +22,6 @@ impl Clients {
 
             match google::GoogleClient::new(config).await {
                 Ok(client) => {
-                    println!("Google Client enabled");
                     Some(Arc::new(client))
                 }
                 Err(e) => {
