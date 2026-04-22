@@ -5,23 +5,20 @@ mod health;
 mod profile;
 mod token;
 
-use crate::{
-    middlewares::authz::{authz_middleware, TokenRouterState},
-    state::AppState,
-};
+use crate::{middlewares::authz::check_authz, state::AppState};
 
-use axum::{middleware::from_fn_with_state, Router};
+use axum::{Router, middleware::from_fn};
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
 fn cors_layer_for_non_local() -> CorsLayer {
     let cors_env = std::env::var("CORS").unwrap_or_else(|_| "".to_string());
     if cors_env.is_empty() {
-        log::info!(
-            "CORS: Empty CORS — no origins allowed"
-        );
+        log::info!("CORS: Empty CORS — no origins allowed");
         return CorsLayer::new()
-            .allow_origin(AllowOrigin::predicate(|_: &axum::http::HeaderValue, _| false))
+            .allow_origin(AllowOrigin::predicate(|_: &axum::http::HeaderValue, _| {
+                false
+            }))
             .allow_methods(Any)
             .allow_headers(Any);
     }
@@ -43,21 +40,17 @@ fn cors_layer_for_non_local() -> CorsLayer {
         match fragment.parse::<axum::http::HeaderValue>() {
             Ok(h) => origins.push(h),
             Err(e) => {
-                log::warn!(
-                    "CORS: skipping invalid origin {:?}: {}",
-                    fragment,
-                    e
-                );
+                log::warn!("CORS: skipping invalid origin {:?}: {}", fragment, e);
             }
         }
     }
 
     if origins.is_empty() {
-        log::info!(
-            "CORS: No valid origins after parsing; no origins allowed",
-        );
+        log::info!("CORS: No valid origins after parsing; no origins allowed",);
         CorsLayer::new()
-            .allow_origin(AllowOrigin::predicate(|_: &axum::http::HeaderValue, _| false))
+            .allow_origin(AllowOrigin::predicate(|_: &axum::http::HeaderValue, _| {
+                false
+            }))
             .allow_methods(Any)
             .allow_headers(Any)
     } else {
@@ -72,30 +65,32 @@ fn cors_layer_for_non_local() -> CorsLayer {
 pub fn routes(app_state: Arc<AppState>) -> Router {
     let cors = cors_layer_for_non_local();
 
-    let token_state = TokenRouterState {
-        app_state: app_state.clone(),
-        required_permissions: Arc::from(["token".to_string()]),
+    let authz = |permission: &str| {
+        let app_state = app_state.clone();
+        let perms: Arc<[String]> = Arc::from([permission.to_string()]);
+        from_fn(move |req, next| {
+            let app_state = app_state.clone();
+            let perms = perms.clone();
+            async move { check_authz(app_state, perms, req, next).await }
+        })
     };
 
     Router::new()
         // .nest(
         //     "/admin",
-        //     admin::routes(app_state.clone()).layer(AuthzLayer::new(vec!["admin".to_string()])),
+        //     admin::routes(app_state.clone()).layer(authz("admin")),
         // )
         .nest(
             "/token",
-            token::routes(token_state.clone()).layer(from_fn_with_state(
-                token_state.clone(),
-                authz_middleware,
-            )),
+            token::routes(app_state.clone()).layer(authz("token")),
         )
         .nest(
             "/drive",
-            drive::routes(app_state.clone()).layer(AuthzLayer::new(vec!["drive".to_string()])),
+            drive::routes(app_state.clone()).layer(authz("drive")),
         )
         .nest(
             "/profile",
-            profile::routes(app_state.clone()).layer(AuthzLayer::new(vec!["profile".to_string()])),
+            profile::routes(app_state.clone()).layer(authz("profile")),
         )
         .nest("/health", health::routes(app_state.clone()))
         .nest("/status", app_info::routes(app_state.clone()))
