@@ -181,15 +181,19 @@ impl GoogleClient {
         if let Some(files) = json.get("files").and_then(|f| f.as_array()) {
             for file in files {
                 if let Some(name) = file.get("name").and_then(|n| n.as_str()) {
-                    secondary_drives.push(
-                        name.to_string()
-                            .replace("sdrive---secondary-drive---", "")
-                            .replace(&primary_email, "")
-                            .replace("---", "||")
-                            .replace("__at__", "@")
-                            .replace("__dot__", ".")
-                            .replace(".json", ""),
-                    );
+                    if let Some(id) = file.get("id").and_then(|id| id.as_str()) {
+                        secondary_drives.push(format!(
+                            "{}{}",
+                            id,
+                            name.to_string()
+                                .replace("sdrive---secondary-drive---", "")
+                                .replace(&primary_email, "")
+                                .replace("---", "||")
+                                .replace("__at__", "@")
+                                .replace("__dot__", ".")
+                                .replace(".json", "")
+                        ));
+                    }
                 }
             }
         }
