@@ -37,6 +37,17 @@ async fn request_handler_user_info(
 
     print!("Google user info response: {:?}", response);
 
+    if let Some(error) = response.get("error") {
+        let error_description = response
+            .get("error_description")
+            .and_then(|desc| desc.as_str())
+            .unwrap_or("Unknown error");
+        return Err(AppError::ExternalServiceError(format!(
+            "Error: {} - {}",
+            error, error_description
+        )));
+    }
+
     Ok(Json(ProfilePayload {
         sub: response["sub"].as_str().unwrap_or_default().to_string(),
         email: response["email"].as_str().unwrap_or_default().to_string(),
