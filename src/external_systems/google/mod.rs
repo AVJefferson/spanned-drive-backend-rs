@@ -212,16 +212,6 @@ impl GoogleClient {
         }
         let primary_email = primary_email.replace("@", "__at__").replace(".", "__dot__");
 
-        let existing: serde_json::Value = Self::list_appdata_files(
-            self,
-            access_token.clone(),
-            format!(
-                "name contains 'sdrive---secondary-drive---{}---'",
-                primary_email.clone()
-            ),
-        )
-        .await?;
-
         let file_name = format!(
             "sdrive---secondary-drive---{}---{}---{}.json",
             primary_email,
@@ -231,44 +221,38 @@ impl GoogleClient {
                 .replace(".", "__dot__")
         );
 
-        if existing
-            .get("files")
-            .and_then(|f| f.as_array())
-            .unwrap_or(&vec![])
-            .iter()
-            .any(|file| file.get("name").and_then(|n| n.as_str()) == Some(&file_name))
-        {
-            return Ok(());
+        let existing_files_response = self
+            .list_appdata_files(access_token.clone(), format!("name = '{}'", file_name))
+            .await?;
+
+        // if filename already exists in the array, return early
+        if let Some(files) = existing_files_response.as_array() {
+            if !files.is_empty() {
+                let google_file_name = files[0]
+                    .get("name")
+                    .and_then(|id| id.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Failed to get file Name"))?;
+
+                if google_file_name == file_name {
+                    return Ok(());
+                }
+            }
         }
-
-        let metadata = serde_json::json!({
-            "name": file_name,
-            "parents": ["appDataFolder"],
-        })
-        .to_string();
-
-        let content = serde_json::json!({
-            "logical_drives": [],
-        })
-        .to_string();
-
-        let body = format!(
-            "--foo_bar_baz\r\n\
-             Content-Type: application/json; charset=UTF-8\r\n\
-             \r\n\
-             {metadata}\r\n\
-             --foo_bar_baz\r\n\
-             Content-Type: application/json\r\n\
-             \r\n\
-             {content}\r\n\
-             --foo_bar_baz--"
-        );
 
         let response = client
             .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
             .bearer_auth(access_token)
             .header("Content-Type", "multipart/related; boundary=foo_bar_baz")
-            .body(body)
+            .body(format!(
+                "--foo_bar_baz\r\n\
+                 Content-Type: application/json; charset=UTF-8\r\n\r\n\
+                 {{\"name\": \"{}\", \"parents\": [\"appDataFolder\"]}}\r\n\
+                 --foo_bar_baz\r\n\
+                 Content-Type: application/json\r\n\r\n\
+                 {{\"is_primary\": true}}\r\n\
+                 --foo_bar_baz--",
+                file_name
+            ))
             .send()
             .await?;
 
