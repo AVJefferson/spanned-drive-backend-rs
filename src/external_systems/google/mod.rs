@@ -58,4 +58,16 @@ impl GoogleClient {
         let json = response.json::<serde_json::Value>().await?;
         Ok(json)
     }
+
+    pub async fn fetch_user_info(&self, access_token: String) -> anyhow::Result<serde_json::Value> {
+        let client = reqwest::Client::new();
+        let response: reqwest::Response = client
+            .get("https://www.googleapis.com/oauth2/v3/userinfo")
+            .bearer_auth(access_token)
+            .send()
+            .await?;
+
+        let json = response.json::<serde_json::Value>().await?;
+        Ok(json)
+    }
 }

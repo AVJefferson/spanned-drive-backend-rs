@@ -1,6 +1,8 @@
 mod admin;
 mod app_info;
+mod drive;
 mod health;
+mod profile;
 mod token;
 
 use crate::{
@@ -69,7 +71,6 @@ fn cors_layer_for_non_local() -> CorsLayer {
 
 pub fn routes(app_state: Arc<AppState>) -> Router {
     let cors = cors_layer_for_non_local();
-    
 
     let token_state = TokenRouterState {
         app_state: app_state.clone(),
@@ -87,6 +88,14 @@ pub fn routes(app_state: Arc<AppState>) -> Router {
                 token_state.clone(),
                 authz_middleware,
             )),
+        )
+        .nest(
+            "/drive",
+            drive::routes(app_state.clone()).layer(AuthzLayer::new(vec!["drive".to_string()])),
+        )
+        .nest(
+            "/profile",
+            profile::routes(app_state.clone()).layer(AuthzLayer::new(vec!["profile".to_string()])),
         )
         .nest("/health", health::routes(app_state.clone()))
         .nest("/status", app_info::routes(app_state.clone()))
