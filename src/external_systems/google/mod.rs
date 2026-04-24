@@ -8,6 +8,42 @@ pub struct GoogleClient {
     pub config: GoogleConfig,
 }
 
+// ---------- Filename / query encoding helpers ----------
+//
+// These mirror the on-disk Google Drive appData naming conventions used by
+// this service. They MUST stay byte-for-byte compatible with previously
+// uploaded files, otherwise existing entries become unreadable.
+
+fn encode_email_for_filename(email: &str) -> String {
+    email.replace("@", "__at__").replace(".", "__dot__")
+}
+
+fn encode_drive_name(name: &str) -> String {
+    name.replace("@", "__at__")
+        .replace(".", "__dot__")
+        .replace("/", "__slash__")
+        .replace("\\", "__backslash__")
+        .replace(" ", "__space__")
+}
+
+fn secondary_drive_filename(
+    primary_email_encoded: &str,
+    drive_provider: &str,
+    secondary_email_encoded: &str,
+) -> String {
+    format!(
+        "sdrive---secondary-drive---{}---{}---{}.json",
+        primary_email_encoded, drive_provider, secondary_email_encoded
+    )
+}
+
+fn logical_folder_filename(primary_email_encoded: &str, folder_name_encoded: &str) -> String {
+    format!(
+        "sdrive---logical-folder---{}---{}.json",
+        primary_email_encoded, folder_name_encoded
+    )
+}
+
 impl GoogleClient {
     pub async fn new(config: GoogleConfig) -> anyhow::Result<Self> {
         Ok(Self { config })
@@ -131,23 +167,76 @@ impl GoogleClient {
         Ok("".to_string())
     }
 
-    pub async fn set_is_primary(&self, access_token: String) -> anyhow::Result<()> {
+    /// Returns true iff an appData file with the given exact name already exists.
+    async fn appdata_file_exists(
+        &self,
+        access_token: &str,
+        file_name: &str,
+    ) -> anyhow::Result<bool> {
+        let existing = self
+            .list_appdata_files(access_token.to_string(), format!("name = '{}'", file_name))
+            .await?;
+
+        if let Some(files) = existing.as_array() {
+            if !files.is_empty() {
+                let google_file_name = files[0]
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Failed to get file Name"))?;
+
+                if google_file_name == file_name {
+                    return Ok(true);
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// Uploads a new appData file with the given metadata name and JSON
+    /// payload via the multipart upload endpoint. The caller is responsible
+    /// for inspecting the returned `Response` status.
+    async fn upload_appdata_file(
+        &self,
+        access_token: &str,
+        file_name: &str,
+        content_json: &str,
+    ) -> anyhow::Result<Response> {
         let client = reqwest::Client::new();
+
+        let body = format!(
+            "--foo_bar_baz\r\n\
+             Content-Type: application/json; charset=UTF-8\r\n\r\n\
+             {{\"name\": \"{}\", \"parents\": [\"appDataFolder\"]}}\r\n\
+             --foo_bar_baz\r\n\
+             Content-Type: application/json\r\n\r\n\
+             {}\r\n\
+             --foo_bar_baz--",
+            file_name, content_json
+        );
 
         let response = client
             .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
             .bearer_auth(access_token)
             .header("Content-Type", "multipart/related; boundary=foo_bar_baz")
-            .body(
-                "--foo_bar_baz\r\n\
-                 Content-Type: application/json; charset=UTF-8\r\n\r\n\
-                 {\"name\": \"is_primary.json\", \"parents\": [\"appDataFolder\"]}
-                 --foo_bar_baz\r\n\
-                 Content-Type: application/json\r\n\r\n\
-                 {\"is_primary\": true}\r\n\
-                 --foo_bar_baz--",
-            )
+            .body(body)
             .send()
+            .await?;
+
+        Ok(response)
+    }
+
+    pub async fn set_is_primary(&self, access_token: String) -> anyhow::Result<()> {
+        // check first if the file already exists to avoid unnecessary uploads
+        if self
+            .appdata_file_exists(&access_token, "is_primary.json")
+            .await?
+        {
+            return Ok(());
+        }
+
+        let response = self
+            .upload_appdata_file(&access_token, "is_primary.json", "{\"is_primary\": true}")
             .await?;
 
         if response.status().is_success() {
@@ -168,11 +257,10 @@ impl GoogleClient {
         if primary_email == "" {
             return Ok(vec![]);
         }
-        let primary_email = primary_email.replace("@", "__at__").replace(".", "__dot__");
+        let primary_email = encode_email_for_filename(primary_email);
 
         let response: reqwest::Response = client
             .get(format!("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name contains 'sdrive---secondary-drive---{}---'", primary_email.clone()))
-            // .get("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name contains 'sdrive_secondary_drive_primary'")
             .bearer_auth(access_token)
             .send()
             .await?;
@@ -203,87 +291,31 @@ impl GoogleClient {
         Ok(secondary_drives)
     }
 
-    async fn create_config_file(&self, access_token: &str, file_name: &str) -> Response {
-        let client = reqwest::Client::new();
-
-        let response = client
-            .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
-            .bearer_auth(access_token)
-            .header("Content-Type", "multipart/related; boundary=foo_bar_baz")
-            .body(format!(
-                "--foo_bar_baz\r\n\
-                 Content-Type: application/json; charset=UTF-8\r\n\r\n\
-                 {{\"name\": \"{}\", \"parents\": [\"appDataFolder\"]}}\r\n\
-                 --foo_bar_baz\r\n\
-                 Content-Type: application/json\r\n\r\n\
-                 {{\"new_file\": true}}\r\n\
-                 --foo_bar_baz--",
-                file_name
-            ))
-            .send()
-            .await
-            .unwrap();
-
-        response
-    }
-
     pub async fn set_secondary_drive(
         &self,
         access_token: String,
         drive_provider: String,
         new_secondary_drive_email: String,
     ) -> anyhow::Result<()> {
-        let client = reqwest::Client::new();
-
         let user = self.fetch_user_info(access_token.clone()).await?;
         let primary_email = user.get("email").and_then(|e| e.as_str()).unwrap_or("");
         if primary_email == "" {
             return Err(anyhow::anyhow!("Failed to fetch user info"));
         }
-        let primary_email = primary_email.replace("@", "__at__").replace(".", "__dot__");
+        let primary_email = encode_email_for_filename(primary_email);
 
-        let file_name = format!(
-            "sdrive---secondary-drive---{}---{}---{}.json",
-            primary_email,
-            drive_provider,
-            new_secondary_drive_email
-                .replace("@", "__at__")
-                .replace(".", "__dot__")
+        let file_name = secondary_drive_filename(
+            &primary_email,
+            &drive_provider,
+            &encode_email_for_filename(&new_secondary_drive_email),
         );
 
-        let existing_files_response = self
-            .list_appdata_files(access_token.clone(), format!("name = '{}'", file_name))
-            .await?;
-
-        // if filename already exists in the array, return early
-        if let Some(files) = existing_files_response.as_array() {
-            if !files.is_empty() {
-                let google_file_name = files[0]
-                    .get("name")
-                    .and_then(|id| id.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("Failed to get file Name"))?;
-
-                if google_file_name == file_name {
-                    return Ok(());
-                }
-            }
+        if self.appdata_file_exists(&access_token, &file_name).await? {
+            return Ok(());
         }
 
-        let response = client
-            .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
-            .bearer_auth(access_token)
-            .header("Content-Type", "multipart/related; boundary=foo_bar_baz")
-            .body(format!(
-                "--foo_bar_baz\r\n\
-                 Content-Type: application/json; charset=UTF-8\r\n\r\n\
-                 {{\"name\": \"{}\", \"parents\": [\"appDataFolder\"]}}\r\n\
-                 --foo_bar_baz\r\n\
-                 Content-Type: application/json\r\n\r\n\
-                 {{\"new_file\": true}}\r\n\
-                 --foo_bar_baz--",
-                file_name
-            ))
-            .send()
+        let response = self
+            .upload_appdata_file(&access_token, &file_name, "{\"new_file\": true}")
             .await?;
 
         if response.status().is_success() {
@@ -296,67 +328,72 @@ impl GoogleClient {
         }
     }
 
-    pub async fn set_logical_drive(
-        &self,
-        access_token: String,
-        drive_name: String,
-    ) -> anyhow::Result<()> {
+    pub async fn get_logical_folders(&self, access_token: String) -> anyhow::Result<Vec<String>> {
         let client = reqwest::Client::new();
 
         let user = self.fetch_user_info(access_token.clone()).await?;
         let primary_email = user.get("email").and_then(|e| e.as_str()).unwrap_or("");
         if primary_email == "" {
-            return Err(anyhow::anyhow!("Failed to fetch user info"));
+            return Ok(vec![]);
         }
+        let primary_email = encode_email_for_filename(primary_email);
 
-        let primary_email = primary_email.replace("@", "__at__").replace(".", "__dot__");
-
-        // Watch out for special characters in drive_name that might cause issues with file naming in Google Drive.
-        let logical_folder_name = drive_name
-            .replace("@", "__at__")
-            .replace(".", "__dot__")
-            .replace("/", "__slash__")
-            .replace("\\", "__backslash__")
-            .replace(" ", "__space__");
-
-        let file_name = format!(
-            "sdrive---logical-folder---{}---{}.json",
-            primary_email, logical_folder_name
-        );
-
-        let existing_files_response = self
-            .list_appdata_files(access_token.clone(), format!("name = '{}'", file_name))
+        let response: reqwest::Response = client
+            .get(format!("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name contains 'sdrive---logical-folder---{}---'", primary_email.clone()))
+            .bearer_auth(access_token)
+            .send()
             .await?;
 
-        // if filename already exists in the array, return early
-        if let Some(files) = existing_files_response.as_array() {
-            if !files.is_empty() {
-                let google_file_name = files[0]
-                    .get("name")
-                    .and_then(|id| id.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("Failed to get file Name"))?;
+        let json = response.json::<serde_json::Value>().await?;
+        let mut logical_folders = Vec::new();
 
-                if google_file_name == file_name {
-                    return Ok(());
+        if let Some(files) = json.get("files").and_then(|f| f.as_array()) {
+            for file in files {
+                if let Some(id) = file.get("id").and_then(|id| id.as_str()) {
+                    if let Some(name) = file.get("name").and_then(|n| n.as_str()) {
+                        logical_folders.push(format!(
+                            "{}{}",
+                            id,
+                            name.to_string()
+                                .replace("sdrive---logical-folder---", "")
+                                .replace(&primary_email, "")
+                                .replace("---", "||")
+                                .replace("__at__", "@")
+                                .replace("__dot__", ".")
+                                .replace(".json", "")
+                        ));
+                    }
                 }
             }
         }
 
-        let response = client
-            .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
-            .bearer_auth(access_token)
-            .header("Content-Type", "multipart/related; boundary=foo_bar_baz")
-            .body(format!(
-                "--foo_bar_baz\r\n\
-                 Content-Type: application/json; charset=UTF-8\r\n\r\n\
-                 {{\"name\": \"{}\", \"parents\": [\"appDataFolder\"]}}\r\n\
-                 --foo_bar_baz\r\n\
-                 Content-Type: application/json\r\n\r\n\
-                 {{\"new_file\": true}}\r\n\
-                 --foo_bar_baz--",
-                file_name
-            ))
-            .send()
+        Ok(logical_folders)
+    }
+
+    pub async fn set_logical_folder(
+        &self,
+        access_token: String,
+        drive_name: String,
+    ) -> anyhow::Result<()> {
+        let user = self.fetch_user_info(access_token.clone()).await?;
+        let primary_email = user.get("email").and_then(|e| e.as_str()).unwrap_or("");
+        if primary_email == "" {
+            return Err(anyhow::anyhow!("Failed to fetch user info"));
+        }
+        let primary_email = encode_email_for_filename(primary_email);
+
+        // Watch out for special characters in drive_name that might cause
+        // issues with file naming in Google Drive.
+        let logical_folder_name = encode_drive_name(&drive_name);
+
+        let file_name = logical_folder_filename(&primary_email, &logical_folder_name);
+
+        if self.appdata_file_exists(&access_token, &file_name).await? {
+            return Ok(());
+        }
+
+        let response = self
+            .upload_appdata_file(&access_token, &file_name, "{\"new_file\": true}")
             .await?;
 
         if response.status().is_success() {
@@ -368,6 +405,4 @@ impl GoogleClient {
             ))
         }
     }
-
-    
 }
