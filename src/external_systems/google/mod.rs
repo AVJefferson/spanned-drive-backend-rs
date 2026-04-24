@@ -1,5 +1,7 @@
 pub mod config;
 
+use reqwest::Response;
+
 use self::config::GoogleConfig;
 
 pub struct GoogleClient {
@@ -201,6 +203,30 @@ impl GoogleClient {
         Ok(secondary_drives)
     }
 
+    async fn create_config_file(&self, access_token: &str, file_name: &str) -> Response {
+        let client = reqwest::Client::new();
+
+        let response = client
+            .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
+            .bearer_auth(access_token)
+            .header("Content-Type", "multipart/related; boundary=foo_bar_baz")
+            .body(format!(
+                "--foo_bar_baz\r\n\
+                 Content-Type: application/json; charset=UTF-8\r\n\r\n\
+                 {{\"name\": \"{}\", \"parents\": [\"appDataFolder\"]}}\r\n\
+                 --foo_bar_baz\r\n\
+                 Content-Type: application/json\r\n\r\n\
+                 {{\"new_file\": true}}\r\n\
+                 --foo_bar_baz--",
+                file_name
+            ))
+            .send()
+            .await
+            .unwrap();
+
+        response
+    }
+
     pub async fn set_secondary_drive(
         &self,
         access_token: String,
@@ -253,7 +279,7 @@ impl GoogleClient {
                  {{\"name\": \"{}\", \"parents\": [\"appDataFolder\"]}}\r\n\
                  --foo_bar_baz\r\n\
                  Content-Type: application/json\r\n\r\n\
-                 {{\"is_primary\": true}}\r\n\
+                 {{\"new_file\": true}}\r\n\
                  --foo_bar_baz--",
                 file_name
             ))
@@ -269,4 +295,79 @@ impl GoogleClient {
             ))
         }
     }
+
+    pub async fn set_logical_drive(
+        &self,
+        access_token: String,
+        drive_name: String,
+    ) -> anyhow::Result<()> {
+        let client = reqwest::Client::new();
+
+        let user = self.fetch_user_info(access_token.clone()).await?;
+        let primary_email = user.get("email").and_then(|e| e.as_str()).unwrap_or("");
+        if primary_email == "" {
+            return Err(anyhow::anyhow!("Failed to fetch user info"));
+        }
+
+        let primary_email = primary_email.replace("@", "__at__").replace(".", "__dot__");
+
+        // Watch out for special characters in drive_name that might cause issues with file naming in Google Drive.
+        let logical_folder_name = drive_name
+            .replace("@", "__at__")
+            .replace(".", "__dot__")
+            .replace("/", "__slash__")
+            .replace("\\", "__backslash__")
+            .replace(" ", "__space__");
+
+        let file_name = format!(
+            "sdrive---logical-folder---{}---{}.json",
+            primary_email, logical_folder_name
+        );
+
+        let existing_files_response = self
+            .list_appdata_files(access_token.clone(), format!("name = '{}'", file_name))
+            .await?;
+
+        // if filename already exists in the array, return early
+        if let Some(files) = existing_files_response.as_array() {
+            if !files.is_empty() {
+                let google_file_name = files[0]
+                    .get("name")
+                    .and_then(|id| id.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Failed to get file Name"))?;
+
+                if google_file_name == file_name {
+                    return Ok(());
+                }
+            }
+        }
+
+        let response = client
+            .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
+            .bearer_auth(access_token)
+            .header("Content-Type", "multipart/related; boundary=foo_bar_baz")
+            .body(format!(
+                "--foo_bar_baz\r\n\
+                 Content-Type: application/json; charset=UTF-8\r\n\r\n\
+                 {{\"name\": \"{}\", \"parents\": [\"appDataFolder\"]}}\r\n\
+                 --foo_bar_baz\r\n\
+                 Content-Type: application/json\r\n\r\n\
+                 {{\"new_file\": true}}\r\n\
+                 --foo_bar_baz--",
+                file_name
+            ))
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!(
+                "Failed to create logical folder: {}",
+                response.text().await?
+            ))
+        }
+    }
+
+    
 }
