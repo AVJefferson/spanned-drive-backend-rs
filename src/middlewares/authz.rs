@@ -56,7 +56,7 @@ mod tests {
     use axum_test::TestServer;
     use dashmap::DashMap;
 
-    use crate::clients::Clients;
+    use crate::external_systems::ExternalClients;
     use crate::test_utils::timeout;
 
     use super::*;
@@ -64,7 +64,7 @@ mod tests {
     #[tokio::test]
     async fn authz() {
         timeout::with_default(async {
-            let clients = Clients::empty();
+            let clients = ExternalClients::empty();
             let auth_tokens = DashMap::new();
             auth_tokens.insert("test".to_string(), vec!["admin".to_string()]);
             auth_tokens.insert("test_no_permission".to_string(), vec![]);

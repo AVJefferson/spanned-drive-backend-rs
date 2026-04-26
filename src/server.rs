@@ -1,5 +1,5 @@
 use crate::{
-    allowed_clients, clients::Clients, constants, logger::Logger, routes, state::AppState,
+    allowed_clients, external_systems::ExternalClients, constants, logger::Logger, routes, state::AppState,
 };
 
 use axum;
@@ -9,7 +9,7 @@ use std::{env, sync::Arc};
 pub async fn start_server() {
     Logger::new(constants::LOG_CHANNEL_SIZE).expect("Failed to initialize logger");
 
-    let clients = Clients::new_from_env_variables().await;
+    let clients = ExternalClients::new_from_env_variables().await;
     let auth_tokens = DashMap::new();
 
     if let Err(e) = allowed_clients::load_into_map(&auth_tokens).await {

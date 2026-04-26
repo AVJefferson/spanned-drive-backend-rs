@@ -4,12 +4,12 @@ use std::{sync::Arc, time::Duration};
 use tokio_cron_scheduler::{Job, JobScheduler};
 use tracing::{error, info};
 
-use crate::clients::Clients;
+use crate::external_systems::ExternalClients;
 
 #[async_trait]
 pub trait Task: Send + Sync {
     fn name(&self) -> String;
-    async fn run(&self, clients: Arc<Clients>) -> Result<()>;
+    async fn run(&self, clients: Arc<ExternalClients>) -> Result<()>;
 }
 
 pub enum Schedule {
@@ -20,13 +20,13 @@ pub enum Schedule {
 
 pub struct Scheduler {
     scheduler: JobScheduler,
-    clients: Arc<Clients>,
+    clients: Arc<ExternalClients>,
 }
 
 impl Scheduler {
     pub async fn new() -> Result<Self> {
         let scheduler = JobScheduler::new().await?;
-        let clients = Arc::new(Clients::new_from_env_variables().await);
+        let clients = Arc::new(ExternalClients::new_from_env_variables().await);
         info!("Scheduler initialized");
         Ok(Self { scheduler, clients })
     }
