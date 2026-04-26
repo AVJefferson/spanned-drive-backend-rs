@@ -374,6 +374,7 @@ impl GoogleClient {
         &self,
         access_token: String,
         drive_name: String,
+        drives: Vec<(String, String)>,
     ) -> anyhow::Result<()> {
         let user = self.fetch_user_info(access_token.clone()).await?;
         let primary_email = user.get("email").and_then(|e| e.as_str()).unwrap_or("");
@@ -392,8 +393,13 @@ impl GoogleClient {
             return Ok(());
         }
 
+        let content = serde_json::json!({
+            "new_file": true,
+            "drives": drives,
+        });
+
         let response = self
-            .upload_appdata_file(&access_token, &file_name, "{\"new_file\": true}")
+            .upload_appdata_file(&access_token, &file_name, &content.to_string())
             .await?;
 
         if response.status().is_success() {

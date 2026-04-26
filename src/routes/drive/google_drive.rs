@@ -120,6 +120,7 @@ async fn request_handler_get_logical_folders(
 struct SetLogicalFolderPayload {
     pub access_token: String,
     pub new_logical_folder_name: String,
+    pub drives: Vec<(String, String)>,
 }
 
 async fn request_handler_set_new_logical_folder(
@@ -133,7 +134,7 @@ async fn request_handler_set_new_logical_folder(
         .ok_or(AppError::ClientNotAvailable)?;
 
     let _ = google_client
-        .set_logical_folder(payload.access_token, payload.new_logical_folder_name)
+        .set_logical_folder(payload.access_token, payload.new_logical_folder_name, payload.drives)
         .await
         .map_err(|e| AppError::ExternalServiceError(format!("Google Drive Call Failed: {}", e)))?;
 
