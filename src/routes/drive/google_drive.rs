@@ -70,6 +70,30 @@ async fn request_handler_get_secondary_drives(
 }
 
 #[derive(serde::Deserialize)]
+struct GetAppdataFilePayload {
+    pub access_token: String,
+    pub file_id: String,
+}
+
+async fn request_handler_get_appdata_file(
+    State(app_state): State<Arc<AppState>>,
+    Json(payload): Json<GetAppdataFilePayload>,
+) -> Result<Json<String>, AppError> {
+    let google_client = app_state
+        .clients
+        .google
+        .as_ref()
+        .ok_or(AppError::ClientNotAvailable)?;
+
+    let appdata_file = google_client
+        .get_appdata_file(payload.access_token, payload.file_id)
+        .await
+        .map_err(|_| AppError::ExternalServiceError(format!("Google Drive Call Failed")))?;
+
+    Ok(Json(appdata_file.to_string()))
+}
+
+#[derive(serde::Deserialize)]
 struct SetSecondaryDrivePayload {
     pub access_token: String,
     pub new_secondary_drive_email: String,
@@ -117,6 +141,12 @@ async fn request_handler_get_logical_folders(
 }
 
 #[derive(serde::Deserialize)]
+struct GetLogicalFolderPayload {
+    pub access_token: String,
+    pub logical_folder_id: String,
+}
+
+#[derive(serde::Deserialize)]
 struct SetLogicalFolderPayload {
     pub access_token: String,
     pub new_logical_folder_name: String,
@@ -134,7 +164,11 @@ async fn request_handler_set_new_logical_folder(
         .ok_or(AppError::ClientNotAvailable)?;
 
     let _ = google_client
-        .set_logical_folder(payload.access_token, payload.new_logical_folder_name, payload.drives)
+        .set_logical_folder(
+            payload.access_token,
+            payload.new_logical_folder_name,
+            payload.drives,
+        )
         .await
         .map_err(|e| AppError::ExternalServiceError(format!("Google Drive Call Failed: {}", e)))?;
 
@@ -143,7 +177,9 @@ async fn request_handler_set_new_logical_folder(
 
 pub fn routes(app_state: Arc<AppState>) -> Router {
     Router::new()
+        .route("/appdata_file", get(request_handler_get_appdata_file))
         .route("/logical_folders", get(request_handler_get_logical_folders))
+        // .route("/logical_folder", get(request_handler_get_logical_folder))
         .route(
             "/logical_folder",
             post(request_handler_set_new_logical_folder),

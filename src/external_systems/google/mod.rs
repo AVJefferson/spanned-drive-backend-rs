@@ -167,6 +167,25 @@ impl GoogleClient {
         Ok("".to_string())
     }
 
+    pub async fn get_appdata_file(
+        &self,
+        access_token: String,
+        file_id: String,
+    ) -> anyhow::Result<String> {
+        let client = reqwest::Client::new();
+        let response: reqwest::Response = client
+            .get(format!(
+                "https://www.googleapis.com/drive/v3/files/{}?alt=media",
+                file_id
+            ))
+            .bearer_auth(access_token)
+            .send()
+            .await?;
+        let json = response.json::<serde_json::Value>().await?;
+
+        Ok(json.to_string())
+    }
+
     /// Returns true iff an appData file with the given exact name already exists.
     async fn appdata_file_exists(
         &self,
