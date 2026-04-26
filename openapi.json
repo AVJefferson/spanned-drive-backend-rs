@@ -23,6 +23,7 @@
   "tags": [
     { "name": "Health" },
     { "name": "Status" },
+    { "name": "OpenAPI" },
     { "name": "Token" },
     { "name": "Profile" },
     { "name": "Drive" }
@@ -53,6 +54,27 @@
                 "schema": { "type": "string" },
                 "examples": {
                   "working": { "value": "Working" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/": {
+      "get": {
+        "tags": ["OpenAPI"],
+        "summary": "OpenAPI document",
+        "description": "Returns embedded `openapi.json` for this service. No auth. Response `Content-Type` is `text/plain` (JSON body).",
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 document (JSON as UTF-8 text)",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "application/json",
+                  "contentEncoding": "identity"
                 }
               }
             }

@@ -2,6 +2,7 @@ mod admin;
 mod app_info;
 mod drive;
 mod health;
+mod openapi;
 mod profile;
 mod token;
 
@@ -94,5 +95,6 @@ pub fn routes(app_state: Arc<AppState>) -> Router {
         )
         .nest("/health", health::routes(app_state.clone()))
         .nest("/status", app_info::routes(app_state.clone()))
+        .nest("/openapi", openapi::routes(app_state.clone()))
         .layer(cors)
 }
