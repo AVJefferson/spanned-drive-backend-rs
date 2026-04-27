@@ -100,7 +100,7 @@ mod tests {
     use axum_test::TestServer;
     use dashmap::DashMap;
 
-    use crate::clients::ExternalClients;
+    use crate::external_systems::ExternalClients;
     use crate::test_utils::timeout;
 
     use super::*;

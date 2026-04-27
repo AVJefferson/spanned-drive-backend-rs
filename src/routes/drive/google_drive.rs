@@ -141,12 +141,6 @@ async fn request_handler_get_logical_folders(
 }
 
 #[derive(serde::Deserialize)]
-struct GetLogicalFolderPayload {
-    pub access_token: String,
-    pub logical_folder_id: String,
-}
-
-#[derive(serde::Deserialize)]
 struct SetLogicalFolderPayload {
     pub access_token: String,
     pub new_logical_folder_name: String,
@@ -177,22 +171,22 @@ async fn request_handler_set_new_logical_folder(
 
 pub fn routes(app_state: Arc<AppState>) -> Router {
     Router::new()
-        .route("/appdata_file", get(request_handler_get_appdata_file))
-        .route("/logical_folders", get(request_handler_get_logical_folders))
+        .route("/get_appdata_file", post(request_handler_get_appdata_file))
+        .route("/get_logical_folders", post(request_handler_get_logical_folders))
         // .route("/logical_folder", get(request_handler_get_logical_folder))
         .route(
-            "/logical_folder",
+            "/set_logical_folder",
             post(request_handler_set_new_logical_folder),
         )
         .route(
-            "/secondary_drives",
-            get(request_handler_get_secondary_drives),
+            "/get_secondary_drives",
+            post(request_handler_get_secondary_drives),
         )
         .route(
-            "/secondary_drive",
+            "/set_secondary_drive",
             post(request_handler_set_new_secondary_drive),
         )
-        .route("/primary_file_id", get(request_handler_get_primary_file_id))
+        .route("/get_primary_file_id", post(request_handler_get_primary_file_id))
         .route("/set_as_primary", post(request_handler_set_as_primary))
         .with_state(app_state)
 }

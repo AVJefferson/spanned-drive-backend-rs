@@ -175,11 +175,11 @@
         }
       }
     },
-    "/drive/google-drive/appdata_file": {
-      "get": {
+    "/drive/google-drive/get_appdata_file": {
+      "post": {
         "tags": ["Drive"],
         "summary": "Get appdata file contents",
-        "description": "Protected by authz middleware; requires permission `drive`. Handler expects JSON body even though method is GET.",
+        "description": "Protected by authz middleware; requires permission `drive`.",
         "security": [{ "bearerAuth": [] }],
         "x-required-permission": "drive",
         "requestBody": {
@@ -206,11 +206,11 @@
         }
       }
     },
-    "/drive/google-drive/logical_folders": {
-      "get": {
+    "/drive/google-drive/get_logical_folders": {
+      "post": {
         "tags": ["Drive"],
         "summary": "List logical folders",
-        "description": "Protected by authz middleware; requires permission `drive`. Handler expects JSON body even though method is GET.",
+        "description": "Protected by authz middleware; requires permission `drive`.",
         "security": [{ "bearerAuth": [] }],
         "x-required-permission": "drive",
         "requestBody": {
@@ -237,7 +237,7 @@
         }
       }
     },
-    "/drive/google-drive/logical_folder": {
+    "/drive/google-drive/set_logical_folder": {
       "post": {
         "tags": ["Drive"],
         "summary": "Create/update logical folder",
@@ -269,11 +269,11 @@
         }
       }
     },
-    "/drive/google-drive/secondary_drives": {
-      "get": {
+    "/drive/google-drive/get_secondary_drives": {
+      "post": {
         "tags": ["Drive"],
         "summary": "List secondary drives",
-        "description": "Protected by authz middleware; requires permission `drive`. Handler expects JSON body even though method is GET.",
+        "description": "Protected by authz middleware; requires permission `drive`.",
         "security": [{ "bearerAuth": [] }],
         "x-required-permission": "drive",
         "requestBody": {
@@ -300,7 +300,7 @@
         }
       }
     },
-    "/drive/google-drive/secondary_drive": {
+    "/drive/google-drive/set_secondary_drive": {
       "post": {
         "tags": ["Drive"],
         "summary": "Set secondary drive",
@@ -332,11 +332,11 @@
         }
       }
     },
-    "/drive/google-drive/primary_file_id": {
-      "get": {
+    "/drive/google-drive/get_primary_file_id": {
+      "post": {
         "tags": ["Drive"],
         "summary": "Get primary file id",
-        "description": "Protected by authz middleware; requires permission `drive`. Handler expects JSON body even though method is GET.",
+        "description": "Protected by authz middleware; requires permission `drive`.",
         "security": [{ "bearerAuth": [] }],
         "x-required-permission": "drive",
         "requestBody": {
