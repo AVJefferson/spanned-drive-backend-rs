@@ -1,4 +1,4 @@
-mod clients;
+mod allowed_clients;
 mod compile_time_checks;
 mod constants;
 mod error;

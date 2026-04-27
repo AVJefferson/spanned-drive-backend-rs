@@ -1,7 +1,7 @@
-use crate::clients::Clients;
+use crate::external_systems::ExternalClients;
 use dashmap::DashMap;
 
 pub struct AppState {
-    pub clients: Clients,
+    pub clients: ExternalClients,
     pub auth_tokens: DashMap<String, Vec<String>>,
 }

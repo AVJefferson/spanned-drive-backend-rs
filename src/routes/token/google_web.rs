@@ -1,24 +1,15 @@
-use crate::{error::AppError, state::AppState};
+use crate::{
+    error::AppError,
+    external_systems::google::config::{GenerateTokenPayload, RefreshTokenPayload},
+    state::AppState,
+};
 
 use axum::{Router, extract::State, response::Json, routing::post};
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-
-#[derive(Debug, Deserialize, Serialize)]
-struct RefreshTokenPayload {
-    pub code: String,
-    pub code_verifier: String,
-    pub redirect_uri: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct AccessTokenPayload {
-    pub refresh_token: String,
-}
 
 async fn request_handler_refresh_token(
     State(app_state): State<Arc<AppState>>,
-    Json(payload): Json<RefreshTokenPayload>,
+    Json(payload): Json<GenerateTokenPayload>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let google_client = app_state
         .clients
@@ -35,7 +26,7 @@ async fn request_handler_refresh_token(
 
 async fn request_handler_access_token(
     State(app_state): State<Arc<AppState>>,
-    Json(payload): Json<AccessTokenPayload>,
+    Json(payload): Json<RefreshTokenPayload>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let google_client = app_state
         .clients

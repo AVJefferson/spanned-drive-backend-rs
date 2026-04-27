@@ -18,13 +18,13 @@ mod tests {
     use axum_test::{TestResponse, TestServer};
     use dashmap::DashMap;
 
-    use crate::clients::Clients;
+    use crate::clients::ExternalClients;
 
     use super::*;
 
     #[tokio::test]
     async fn is_running() {
-        let clients = Clients::empty();
+        let clients = ExternalClients::empty();
 
         let app_state = Arc::new(AppState {
             clients: clients,

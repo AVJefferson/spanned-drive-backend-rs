@@ -100,14 +100,14 @@ mod tests {
     use axum_test::TestServer;
     use dashmap::DashMap;
 
-    use crate::clients::Clients;
+    use crate::clients::ExternalClients;
     use crate::test_utils::timeout;
 
     use super::*;
 
     // Setup Server before each test
     async fn get_test_server() -> (TestServer, Arc<AppState>) {
-        let clients = Clients::empty();
+        let clients = ExternalClients::empty();
         let auth_tokens = DashMap::new();
         auth_tokens.insert("test".to_string(), vec!["admin".to_string()]);
         let app_state = Arc::new(AppState {
