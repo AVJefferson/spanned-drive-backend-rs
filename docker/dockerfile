@@ -7,7 +7,7 @@ RUN rustup target add aarch64-unknown-linux-musl
 
 WORKDIR /app
 
-# ARG PROFILE=prd
+ARG PROFILE=prd
 ARG TARGET=aarch64-unknown-linux-musl
 
 # --- Precompile Cargo Crates ---
@@ -16,19 +16,15 @@ COPY Cargo.toml Cargo.lock ./
 COPY .cargo/config.toml .cargo/config.toml
 
 RUN echo "fn main() {}" > src/main.rs && \
-    cargo build-dev && \
-    cargo build-stg && \
-    cargo build-prd
-
-# #  This step is causing issues in the actual build step.
-# #  Unable to find a cause
-# RUN cargo build --target ${TARGET}
+    cargo check --target ${TARGET}
+RUN cargo build-${PROFILE}
 
 # --- Copy New Code and Rebuild application ---
 ARG PROFILE=prd
 ARG APP_NAME=rust-app
 
 COPY src/ src
+COPY openapi.json openapi.json
 
 ARG QUIETLY="false"
 RUN if [ "${QUIETLY}" = "false" ]; then QUIETLY=""; else QUIETLY="-q"; fi && \
