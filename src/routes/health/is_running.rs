@@ -18,7 +18,7 @@ mod tests {
     use axum_test::{TestResponse, TestServer};
     use dashmap::DashMap;
 
-    use crate::clients::ExternalClients;
+    use crate::external_systems::ExternalClients;
 
     use super::*;
 
