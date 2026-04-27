@@ -6,7 +6,7 @@ mod external_systems;
 mod logger;
 mod middlewares;
 mod routes;
-mod schedules;
+// mod schedules;
 mod server;
 mod state;
 mod test_utils;
@@ -14,6 +14,7 @@ mod validation;
 
 #[tokio::main]
 async fn main() {
-    schedules::init_scheduler().await;
+    // Commented Since no cron jobs currently active
+    // schedules::init_scheduler().await;
     server::start_server().await;
 }
