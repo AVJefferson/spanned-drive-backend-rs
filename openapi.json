@@ -30,7 +30,7 @@
     { "name": "Admin" }
   ],
   "paths": {
-    "/health/is_running/": {
+    "/health/is_running": {
       "get": {
         "tags": ["Health"],
         "summary": "Liveness probe",
@@ -42,7 +42,7 @@
         }
       }
     },
-    "/status/": {
+    "/status": {
       "get": {
         "tags": ["Status"],
         "summary": "Service status",
@@ -62,7 +62,7 @@
         }
       }
     },
-    "/openapi/": {
+    "/openapi": {
       "get": {
         "tags": ["OpenAPI"],
         "summary": "OpenAPI document",
@@ -145,7 +145,7 @@
         }
       }
     },
-    "/profile/google/": {
+    "/profile/google": {
       "post": {
         "tags": ["Profile"],
         "summary": "Fetch Google user profile",
