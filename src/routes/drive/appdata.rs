@@ -1,16 +1,13 @@
-use crate::{constants, error::AppError, external_systems::google::config, state::AppState};
+use crate::{error::AppError, external_systems::google::config::AccessTokenPayload, state::AppState};
 
-use axum::{
-    Router,
-    extract::State,
-    response::Json,
-    routing::{get, post, put},
-};
+use axum::{Router, extract::State, response::Json, routing::post};
 use std::sync::Arc;
+
+// ---- appData by-ID handlers ----
 
 async fn request_handler_get_primary_file_id(
     State(app_state): State<Arc<AppState>>,
-    Json(payload): Json<config::AccessTokenPayload>,
+    Json(payload): Json<AccessTokenPayload>,
 ) -> Result<Json<String>, AppError> {
     let google_client = app_state
         .clients
@@ -26,7 +23,7 @@ async fn request_handler_get_primary_file_id(
 
 async fn request_handler_set_as_primary(
     State(app_state): State<Arc<AppState>>,
-    Json(payload): Json<config::AccessTokenPayload>,
+    Json(payload): Json<AccessTokenPayload>,
 ) -> Result<Json<bool>, AppError> {
     let google_client = app_state
         .clients
@@ -37,24 +34,24 @@ async fn request_handler_set_as_primary(
     let primary_file_id = google_client
         .get_primary_file_id(payload.access_token.clone())
         .await
-        .map_err(|_| AppError::ExternalServiceError(format!("Google Drive Call Failed")))?;
+        .map_err(|_| AppError::ExternalServiceError("Google Drive Call Failed".to_string()))?;
 
-    if primary_file_id != "" {
+    if !primary_file_id.is_empty() {
         return Ok(Json(true));
     }
 
     let _ = google_client
         .set_is_primary(payload.access_token)
         .await
-        .map_err(|_| AppError::ExternalServiceError(format!("Google Drive Call Failed")))?;
+        .map_err(|_| AppError::ExternalServiceError("Google Drive Call Failed".to_string()))?;
 
     Ok(Json(true))
 }
 
 async fn request_handler_get_secondary_drives(
     State(app_state): State<Arc<AppState>>,
-    Json(payload): Json<config::AccessTokenPayload>,
-) -> Result<Json<Vec<String>>, AppError> {
+    Json(payload): Json<AccessTokenPayload>,
+) -> Result<Json<Vec<serde_json::Value>>, AppError> {
     let google_client = app_state
         .clients
         .google
@@ -64,7 +61,7 @@ async fn request_handler_get_secondary_drives(
     let secondary_drives = google_client
         .get_secondary_drives(payload.access_token)
         .await
-        .map_err(|_| AppError::ExternalServiceError(format!("Google Drive Call Failed")))?;
+        .map_err(|_| AppError::ExternalServiceError("Google Drive Call Failed".to_string()))?;
 
     Ok(Json(secondary_drives))
 }
@@ -88,9 +85,9 @@ async fn request_handler_get_appdata_file(
     let appdata_file = google_client
         .get_appdata_file(payload.access_token, payload.file_id)
         .await
-        .map_err(|_| AppError::ExternalServiceError(format!("Google Drive Call Failed")))?;
+        .map_err(|_| AppError::ExternalServiceError("Google Drive Call Failed".to_string()))?;
 
-    Ok(Json(appdata_file.to_string()))
+    Ok(Json(appdata_file))
 }
 
 #[derive(serde::Deserialize)]
@@ -124,8 +121,8 @@ async fn request_handler_set_new_secondary_drive(
 
 async fn request_handler_get_logical_folders(
     State(app_state): State<Arc<AppState>>,
-    Json(payload): Json<config::AccessTokenPayload>,
-) -> Result<Json<Vec<String>>, AppError> {
+    Json(payload): Json<AccessTokenPayload>,
+) -> Result<Json<Vec<serde_json::Value>>, AppError> {
     let google_client = app_state
         .clients
         .google
@@ -135,7 +132,7 @@ async fn request_handler_get_logical_folders(
     let logical_folders = google_client
         .get_logical_folders(payload.access_token)
         .await
-        .map_err(|_| AppError::ExternalServiceError(format!("Google Drive Call Failed")))?;
+        .map_err(|_| AppError::ExternalServiceError("Google Drive Call Failed".to_string()))?;
 
     Ok(Json(logical_folders))
 }
@@ -144,7 +141,9 @@ async fn request_handler_get_logical_folders(
 struct SetLogicalFolderPayload {
     pub access_token: String,
     pub new_logical_folder_name: String,
-    pub drives: Vec<(String, String)>,
+    /// Each tuple is `[provider, email, root_folder_id?]`; arbitrary length
+    /// strings are forwarded verbatim into the stored appData file.
+    pub drives: Vec<Vec<String>>,
 }
 
 async fn request_handler_set_new_logical_folder(
@@ -169,15 +168,65 @@ async fn request_handler_set_new_logical_folder(
     Ok(Json(true))
 }
 
+// ---- appData by-name handlers ----
+
+#[derive(serde::Deserialize)]
+struct GetAppdataFileByNamePayload {
+    pub access_token: String,
+    pub file_name: String,
+}
+
+async fn request_handler_get_appdata_file_by_name(
+    State(app_state): State<Arc<AppState>>,
+    Json(payload): Json<GetAppdataFileByNamePayload>,
+) -> Result<Json<Option<String>>, AppError> {
+    let google_client = app_state
+        .clients
+        .google
+        .as_ref()
+        .ok_or(AppError::ClientNotAvailable)?;
+
+    let content = google_client
+        .get_appdata_file_by_name(payload.access_token, payload.file_name)
+        .await
+        .map_err(|e| AppError::ExternalServiceError(e.to_string()))?;
+
+    Ok(Json(content))
+}
+
+#[derive(serde::Deserialize)]
+struct SetAppdataFileByNamePayload {
+    pub access_token: String,
+    pub file_name: String,
+    pub content: String,
+}
+
+async fn request_handler_set_appdata_file_by_name(
+    State(app_state): State<Arc<AppState>>,
+    Json(payload): Json<SetAppdataFileByNamePayload>,
+) -> Result<Json<bool>, AppError> {
+    let google_client = app_state
+        .clients
+        .google
+        .as_ref()
+        .ok_or(AppError::ClientNotAvailable)?;
+
+    google_client
+        .set_appdata_file_by_name(payload.access_token, payload.file_name, payload.content)
+        .await
+        .map_err(|e| AppError::ExternalServiceError(e.to_string()))?;
+
+    Ok(Json(true))
+}
+
 pub fn routes(app_state: Arc<AppState>) -> Router {
     Router::new()
         .route("/get_appdata_file", post(request_handler_get_appdata_file))
-        .route("/get_logical_folders", post(request_handler_get_logical_folders))
-        // .route("/logical_folder", get(request_handler_get_logical_folder))
         .route(
-            "/set_logical_folder",
-            post(request_handler_set_new_logical_folder),
+            "/get_primary_file_id",
+            post(request_handler_get_primary_file_id),
         )
+        .route("/set_as_primary", post(request_handler_set_as_primary))
         .route(
             "/get_secondary_drives",
             post(request_handler_get_secondary_drives),
@@ -186,7 +235,21 @@ pub fn routes(app_state: Arc<AppState>) -> Router {
             "/set_secondary_drive",
             post(request_handler_set_new_secondary_drive),
         )
-        .route("/get_primary_file_id", post(request_handler_get_primary_file_id))
-        .route("/set_as_primary", post(request_handler_set_as_primary))
+        .route(
+            "/get_logical_folders",
+            post(request_handler_get_logical_folders),
+        )
+        .route(
+            "/set_logical_folder",
+            post(request_handler_set_new_logical_folder),
+        )
+        .route(
+            "/get_appdata_file_by_name",
+            post(request_handler_get_appdata_file_by_name),
+        )
+        .route(
+            "/set_appdata_file_by_name",
+            post(request_handler_set_appdata_file_by_name),
+        )
         .with_state(app_state)
 }

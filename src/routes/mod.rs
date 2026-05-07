@@ -9,11 +9,19 @@ mod token;
 use crate::{middlewares::authz::check_authz, state::AppState};
 
 use axum::{Router, middleware::from_fn};
+use axum::http::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+use axum::http::HeaderName;
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
 fn cors_layer_for_non_local() -> CorsLayer {
     let cors_env = std::env::var("CORS").unwrap_or_else(|_| "".to_string());
+    let allowed_headers = [
+        AUTHORIZATION,
+        CONTENT_TYPE,
+        ACCEPT,
+        HeaderName::from_static("x-requested-with"),
+    ];
     if cors_env.is_empty() {
         log::info!("CORS: Empty CORS — no origins allowed");
         return CorsLayer::new()
@@ -21,7 +29,7 @@ fn cors_layer_for_non_local() -> CorsLayer {
                 false
             }))
             .allow_methods(Any)
-            .allow_headers(Any);
+            .allow_headers(allowed_headers);
     }
 
     if cors_env.trim() == "*" {
@@ -29,7 +37,7 @@ fn cors_layer_for_non_local() -> CorsLayer {
         return CorsLayer::new()
             .allow_origin(Any)
             .allow_methods(Any)
-            .allow_headers(Any);
+            .allow_headers(allowed_headers);
     }
 
     let mut origins = Vec::new();
@@ -53,13 +61,13 @@ fn cors_layer_for_non_local() -> CorsLayer {
                 false
             }))
             .allow_methods(Any)
-            .allow_headers(Any)
+            .allow_headers(allowed_headers)
     } else {
         log::info!("CORS: allowing {} explicit origin(s)", origins.len());
         CorsLayer::new()
             .allow_origin(origins)
             .allow_methods(Any)
-            .allow_headers(Any)
+            .allow_headers(allowed_headers)
     }
 }
 
